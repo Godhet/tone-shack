@@ -4,7 +4,7 @@ A tiny, no-install browser guitar amp + practice tool. Plug a guitar into your
 audio interface, open the site, hit **POWER ON**, and play — everything runs
 in the browser with the Web Audio API. No backend, no downloads.
 
-**Live:** https://godhet.github.io/guitar-amp/
+**Live:** https://godhet.github.io/tone-shack/
 
 ## Features
 - **Amp** — instant headphone monitoring with curated presets (Oasis acoustic,
@@ -29,3 +29,8 @@ python3 -m http.server 8000
   cabinet sim + convolver reverb). No external impulse-response files needed.
 - The input's echo-cancellation / noise-suppression / auto-gain are disabled on
   purpose — those "features" mangle guitar tone.
+
+## License
+Licensed under the [GNU GPL v3.0](LICENSE). You're free to use, modify, and
+share it — but distributed derivatives must stay open-source under the same
+license.
