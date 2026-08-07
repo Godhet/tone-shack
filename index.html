@@ -23,8 +23,16 @@
       </select>
       <div class="meter" title="Input level — pluck a string, this should move">
         <div id="meterFill" class="meter-fill"></div>
+        <div id="meterGate" class="meter-gate" title="Noise gate threshold"></div>
       </div>
     </section>
+
+    <section class="tune" id="inputTune"></section>
+    <p class="tune-help">
+      Static or hiss between notes? Raise the noise gate until the marker on the
+      level meter sits just above where the hiss lands, but below your quietest
+      playing. Fuzzy or clipped even on clean presets? Lower the input trim.
+    </p>
 
     <nav class="tabs" id="tabs">
       <button class="tab active" data-view="amp">Amp</button>

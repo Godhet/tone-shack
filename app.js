@@ -52,6 +52,9 @@ const state = {
   presetId: null,
   values: {},       // current knob values
   meterRAF: null,
+  sliders: {},
+  trim: 1.2,        // both overwritten from storage during startup
+  gate: 0.02,
 };
 
 // ------------------------------------------------------------------ helpers
@@ -95,7 +98,7 @@ function buildGraph() {
   const n = {};
 
   n.inputGain = ctx.createGain();
-  n.inputGain.gain.value = 1.2;          // modest — too hot here = everything clips/distorts
+  n.inputGain.gain.value = state.trim;   // too hot here = everything clips and fizzes
 
   // noise gate: silences hiss/static when you're not actually playing
   n.gate = ctx.createGain();
@@ -249,71 +252,126 @@ function applyKnob(key, value) {
   }
 }
 
-// ------------------------------------------------------------------ UI: controls
-// Horizontal sliders: click or drag anywhere on the track to set a value.
-const drag = { key: null, spec: null, el: null };
+// ------------------------------------------------------------------ UI: sliders
+// Click or drag anywhere on the track to set a value.
+function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+
+let activeSlider = null;
+
+function mountSlider(host, opts) {
+  const { label, min, max, step, format, onInput } = opts;
+  host.className = "ctrl";
+  host.innerHTML = `
+    <div class="ctrl-head">
+      <span class="name">${label}</span>
+      <span class="val"></span>
+    </div>
+    <div class="ctrl-hit">
+      <div class="ctrl-track">
+        <div class="ctrl-fill"></div>
+        <div class="ctrl-thumb"></div>
+      </div>
+    </div>
+  `;
+  const fill = host.querySelector(".ctrl-fill");
+  const thumb = host.querySelector(".ctrl-thumb");
+  const valEl = host.querySelector(".val");
+  const track = host.querySelector(".ctrl-track");
+  const hit = host.querySelector(".ctrl-hit");
+
+  const api = {
+    value: opts.value,
+    set(v, fire = true) {
+      api.value = clamp(v, min, max);
+      const pct = ((api.value - min) / (max - min)) * 100;
+      fill.style.width = pct + "%";
+      thumb.style.left = pct + "%";
+      valEl.textContent = format(api.value);
+      if (fire) onInput(api.value);
+    },
+    fromX(clientX) {
+      const r = track.getBoundingClientRect();
+      api.set(min + clamp((clientX - r.left) / r.width, 0, 1) * (max - min));
+    },
+  };
+
+  hit.addEventListener("mousedown", (e) => {
+    activeSlider = api; api.fromX(e.clientX); e.preventDefault();
+  });
+  hit.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    api.set(api.value - Math.sign(e.deltaY) * step * 4);
+  }, { passive: false });
+
+  api.set(opts.value, false);
+  return api;
+}
+
+window.addEventListener("mousemove", (e) => { if (activeSlider) activeSlider.fromX(e.clientX); });
+window.addEventListener("mouseup", () => { activeSlider = null; });
 
 function renderKnobs() {
   const wrap = document.getElementById("knobs");
   wrap.innerHTML = "";
-  for (const spec of KNOBS) {
-    const [key, label] = spec;
-    const el = document.createElement("div");
-    el.className = "ctrl";
-    el.innerHTML = `
-      <div class="ctrl-head">
-        <span class="name">${label}</span>
-        <span class="val" id="val-${key}"></span>
-      </div>
-      <div class="ctrl-hit">
-        <div class="ctrl-track">
-          <div class="ctrl-fill"></div>
-          <div class="ctrl-thumb"></div>
-        </div>
-      </div>
-    `;
-    wrap.appendChild(el);
-    setControl(el, spec, state.values[key]);
-
-    const hit = el.querySelector(".ctrl-hit");
-    hit.addEventListener("mousedown", (e) => {
-      drag.key = key; drag.spec = spec; drag.el = el;
-      setFromPointer(e.clientX);
-      e.preventDefault();
+  state.sliders = {};
+  for (const [key, label, min, max, step, unit] of KNOBS) {
+    const host = document.createElement("div");
+    wrap.appendChild(host);
+    state.sliders[key] = mountSlider(host, {
+      label, min, max, step,
+      value: state.values[key],
+      format: (v) => unit === "dB"
+        ? (v > 0 ? "+" : "") + v.toFixed(1)
+        : String(Math.round(v * 100)),
+      onInput: (v) => applyKnob(key, v),
     });
-    hit.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      const [, , min, max, step] = spec;
-      const v = clamp(state.values[key] - Math.sign(e.deltaY) * step * 4, min, max);
-      applyKnob(key, v);
-      setControl(el, spec, v);
-    }, { passive: false });
   }
 }
 
-function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+// ------------------------------------------------------------------ input tuning
+// These depend on your interface and room, not on the tone, so they live
+// outside the presets and persist between visits.
+const TUNE_DEFAULTS = { trim: 1.2, gate: 0.02 };
 
-function setFromPointer(clientX) {
-  if (!drag.key) return;
-  const [key, , min, max] = drag.spec;
-  const track = drag.el.querySelector(".ctrl-track").getBoundingClientRect();
-  const frac = clamp((clientX - track.left) / track.width, 0, 1);
-  const v = min + frac * (max - min);
-  applyKnob(key, v);
-  setControl(drag.el, drag.spec, v);
+function loadTune() {
+  try {
+    return { ...TUNE_DEFAULTS, ...JSON.parse(localStorage.getItem("toneshack.input") || "{}") };
+  } catch (e) { return { ...TUNE_DEFAULTS }; }
+}
+function saveTune() {
+  try {
+    localStorage.setItem("toneshack.input",
+      JSON.stringify({ trim: state.trim, gate: state.gate }));
+  } catch (e) { /* private mode, not worth surfacing */ }
 }
 
-window.addEventListener("mousemove", (e) => { if (drag.key) setFromPointer(e.clientX); });
-window.addEventListener("mouseup", () => { drag.key = null; drag.spec = null; drag.el = null; });
+function mountInputTuning() {
+  const wrap = document.getElementById("inputTune");
+  const trimHost = document.createElement("div");
+  const gateHost = document.createElement("div");
+  wrap.append(trimHost, gateHost);
 
-function setControl(el, spec, val) {
-  const [key, , min, max, , unit] = spec;
-  const pct = ((val - min) / (max - min)) * 100;
-  el.querySelector(".ctrl-fill").style.width = pct + "%";
-  el.querySelector(".ctrl-thumb").style.left = pct + "%";
-  el.querySelector("#val-" + key).textContent = unit === "dB"
-    ? (val > 0 ? "+" : "") + val.toFixed(1)
-    : String(Math.round(val * 100));
+  mountSlider(trimHost, {
+    label: "Input trim", min: 0.2, max: 3.0, step: 0.05, value: state.trim,
+    format: (v) => v.toFixed(2) + "x",
+    onInput: (v) => {
+      state.trim = v;
+      if (state.ctx) state.nodes.inputGain.gain.value = v;
+      saveTune();
+    },
+  });
+
+  mountSlider(gateHost, {
+    label: "Noise gate", min: 0, max: 0.12, step: 0.002, value: state.gate,
+    format: (v) => (v <= 0.001 ? "off" : String(Math.round((v / 0.12) * 100))),
+    onInput: (v) => {
+      state.gate = v;
+      document.getElementById("meterGate").style.left = toMeterPct(v) + "%";
+      saveTune();
+    },
+  });
+
+  document.getElementById("meterGate").style.left = toMeterPct(state.gate) + "%";
 }
 
 // ------------------------------------------------------------------ devices
@@ -345,6 +403,15 @@ async function openStream(deviceId) {
 }
 
 // ------------------------------------------------------------------ meter
+// Log scale (-60 dB .. 0 dB). A linear meter crams every useful gate
+// setting into the leftmost sliver, which makes the threshold marker
+// impossible to line up against the hiss.
+function toMeterPct(amp) {
+  if (amp <= 0.0002) return 0;
+  const db = 20 * Math.log10(amp);
+  return clamp(((db + 60) / 60) * 100, 0, 100);
+}
+
 function startMeter() {
   const analyser = state.nodes.analyser;
   const buf = new Uint8Array(analyser.fftSize);
@@ -356,10 +423,10 @@ function startMeter() {
       const v = Math.abs(buf[i] - 128) / 128;
       if (v > peak) peak = v;
     }
-    fill.style.width = Math.min(100, peak * 140) + "%";
+    fill.style.width = toMeterPct(peak) + "%";
     // noise gate: open when you're playing, close (smoothly) when you're not
     if (state.nodes.gate) {
-      const open = peak > 0.02;
+      const open = state.gate <= 0.001 || peak > state.gate;
       const target = open ? 1 : 0;
       state.nodes.gate.gain.setTargetAtTime(
         target, state.ctx.currentTime, open ? 0.005 : 0.08);
@@ -1003,6 +1070,11 @@ function buildScalePickers() {
     renderScale();
   });
 }
+const savedTune = loadTune();
+state.trim = savedTune.trim;
+state.gate = savedTune.gate;
+mountInputTuning();
+
 buildScalePickers();
 renderScale();
 applyPreset("oasis-electric");     // show the amp face before power on

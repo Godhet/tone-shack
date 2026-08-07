@@ -101,8 +101,9 @@ body {
 }
 .setup select:focus { outline: none; border-color: var(--accent); }
 .meter {
-  width: 120px;
-  height: 4px;
+  position: relative;
+  width: 170px;
+  height: 8px;
   background: var(--border);
   border-radius: 2px;
   overflow: hidden;
@@ -112,6 +113,30 @@ body {
   height: 100%;
   background: var(--accent);
   transition: width 0.05s linear;
+}
+.meter-gate {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 0;
+  width: 2px;
+  background: var(--text);
+  opacity: 0.85;
+}
+
+/* ---------- input tuning ---------- */
+.tune {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px 24px;
+  padding: 6px 0 14px;
+}
+.tune-help {
+  margin: 0 0 22px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-3);
+  max-width: 62ch;
 }
 
 /* ---------- tabs ---------- */
