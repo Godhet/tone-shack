@@ -688,7 +688,7 @@ document.querySelectorAll("#tabs > .tab").forEach((tab) => {
       }
       setChordTarget();
       startLearn();
-    } else stopLearn();
+    } else { stopLearn(); stopPlay(); }
   });
 });
 document.querySelectorAll("[data-learn]").forEach((tab) => {
@@ -701,7 +701,7 @@ document.querySelectorAll("[data-learn]").forEach((tab) => {
     document.getElementById("scalesPanel").hidden = learn.mode !== "scales";
     learn.hold = 0; learn.cooling = false;
     if (learn.mode === "scales") { stopLearn(); renderScale(); }
-    else startLearn();
+    else { stopPlay(); startLearn(); }
   });
 });
 
@@ -735,7 +735,124 @@ const STRING_MIDI = [64, 59, 55, 50, 45, 40];
 const STRING_LBL = ["e", "B", "G", "D", "A", "E"];
 const FRET_COUNT = 15;
 
-const scaleState = { type: "min-pent", rootPc: 9 };   // A minor pentatonic
+const scaleState = {
+  type: "min-pent", rootPc: 9,   // A minor pentatonic
+  step: 0, steps: [], startFret: 0, bothWays: false, timer: null,
+};
+
+const FINGER_NAME = ["open string", "index finger", "middle finger", "ring finger", "pinky"];
+// display order is high e first, so index 5 is the low E string
+const STRING_NAME = ["high E (thinnest)", "B", "G", "D", "A", "low E (thickest)"];
+
+// Which finger plays a given fret, given where the box sits.
+function fingerFor(fret, startFret) {
+  if (fret === 0) return 0;
+  return fret - Math.max(startFret, 1) + 1;
+}
+
+// Walk the box low string to high string, low fret to high fret.
+// That ascending run is the order a beginner should learn first.
+function buildSteps(rootPc, intervals, startFret) {
+  const steps = [];
+  for (let s = 5; s >= 0; s--) {
+    for (let f = startFret; f <= startFret + 3; f++) {
+      const pc = (STRING_MIDI[s] + f) % 12;
+      const idx = intervals.indexOf((pc - rootPc + 12) % 12);
+      if (idx === -1) continue;
+      steps.push({
+        s, fret: f, pc,
+        finger: fingerFor(f, startFret),
+        isRoot: idx === 0,
+      });
+    }
+  }
+  return steps;
+}
+
+function buildBoxSvg(steps, startFret, current) {
+  const padL = 58, padR = 18, padT = 30, fw = 84, sh = 32;
+  const cols = 4;
+  const W = padL + cols * fw + padR;
+  const H = padT + 5 * sh + 34;
+  const x = (i) => padL + i * fw;                 // i = column index 0..4
+  const dotX = (i) => padL + (i + 0.5) * fw;
+  const y = (s) => padT + s * sh;
+  const openX = padL - 26;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+
+  for (let i = 0; i <= cols; i++) {
+    const isNut = startFret === 0 && i === 0;
+    svg += `<line class="${isNut ? "sb-nut" : "sb-fret"}" x1="${x(i)}" y1="${
+      y(0)}" x2="${x(i)}" y2="${y(5)}"/>`;
+  }
+  for (let s = 0; s < 6; s++) {
+    svg += `<line class="sb-string" x1="${x(0)}" y1="${y(s)}" x2="${x(cols)}" y2="${y(s)}"/>`;
+    svg += `<text class="sb-lbl" x="${openX - 8}" y="${y(s) + 4}" text-anchor="end">${
+      STRING_LBL[s]}</text>`;
+  }
+  for (let i = 0; i < cols; i++) {
+    svg += `<text class="sb-num" x="${dotX(i)}" y="${y(5) + 22}" text-anchor="middle">fret ${
+      startFret + i}</text>`;
+  }
+
+  steps.forEach((st, i) => {
+    const col = st.fret - startFret;
+    const cx = st.fret === 0 ? openX : dotX(col);
+    const cy = y(st.s);
+    let cls = "", lcls = "";
+    if (i === current) { cls = " cur"; lcls = " cur"; }
+    else if (i < current) { cls = " done"; lcls = " done"; }
+    if (i === current) {
+      svg += `<circle class="sb-ring" cx="${cx}" cy="${cy}" r="17"/>`;
+    }
+    svg += `<circle class="sb-step${cls}" cx="${cx}" cy="${cy}" r="12"/>`;
+    svg += `<text class="sb-step-lbl${lcls}" x="${cx}" y="${cy + 4}" text-anchor="middle">${
+      i + 1}</text>`;
+  });
+
+  svg += `</svg>`;
+  return svg;
+}
+
+function renderStep() {
+  const { steps, step, startFret } = scaleState;
+  document.getElementById("scaleBox").innerHTML =
+    buildBoxSvg(steps, startFret, step);
+
+  const st = steps[step];
+  const readout = document.getElementById("stepReadout");
+  if (!st) { readout.textContent = ""; return; }
+  const fretTxt = st.fret === 0
+    ? "play it open, no finger"
+    : `fret <b>${st.fret}</b>`;
+  readout.innerHTML =
+    `<span class="num">${step + 1} / ${steps.length}</span>` +
+    `<span class="where">${STRING_NAME[st.s]} string, ${fretTxt}</span>` +
+    `<span class="finger">· ${FINGER_NAME[st.finger]}${st.isRoot ? " · root note" : ""}</span>`;
+}
+
+function stepTo(i) {
+  const n = scaleState.steps.length;
+  if (!n) return;
+  scaleState.step = ((i % n) + n) % n;
+  renderStep();
+}
+
+function stopPlay() {
+  if (scaleState.timer) clearInterval(scaleState.timer);
+  scaleState.timer = null;
+  document.getElementById("stepPlay").textContent = "Play";
+  document.getElementById("stepPlay").classList.remove("playing");
+}
+
+function togglePlay() {
+  if (scaleState.timer) { stopPlay(); return; }
+  const btn = document.getElementById("stepPlay");
+  btn.textContent = "Stop";
+  btn.classList.add("playing");
+  scaleState.timer = setInterval(() => stepTo(scaleState.step + 1), 1100);
+}
 
 function buildFretboard(rootPc, intervals, degrees, boxRootPc) {
   const padL = 46, padR = 14, padT = 22, fw = 40, sh = 26;
@@ -827,13 +944,25 @@ function renderScale() {
     scaleState.rootPc, sc.intervals, sc.degrees, boxRootPc);
   document.getElementById("fretboard").innerHTML = svg;
 
-  const where = bandFrom === 0
-    ? "open position, using the open strings plus the first three frets"
-    : `frets ${bandFrom} to ${bandTo}, index finger at fret ${bandFrom}`;
+  // rebuild the guided walkthrough for this scale + key
+  stopPlay();
+  scaleState.startFret = bandFrom;
+  const up = buildSteps(scaleState.rootPc, sc.intervals, bandFrom);
+  scaleState.steps = scaleState.bothWays
+    ? up.concat(up.slice(0, -1).reverse())
+    : up;
+  scaleState.step = 0;
+  renderStep();
+
+  const anchor = bandFrom === 0
+    ? "Your index finger covers fret 1, middle fret 2, ring fret 3, and some notes are open strings."
+    : `Park your index finger on fret ${bandFrom} and do not move your hand — ` +
+      `index covers fret ${bandFrom}, ring fret ${bandFrom + 2}, pinky fret ${bandFrom + 3}.`;
   document.getElementById("scaleTip").innerHTML =
     `<strong>${rootName} ${sc.name.toLowerCase()}.</strong> ${sc.tip} ` +
-    `Start in the shaded box: ${where}. Play it up and down until the shape is in your hands, ` +
-    `then try landing on an orange root note at the end of a phrase — that is what makes a lick sound finished.`;
+    `${anchor} Follow the numbers 1 to ${up.length}, one note at a time, lowest string first. ` +
+    `Hit Play and it walks you through. Once the shape is in your hands, try finishing a phrase ` +
+    `on an orange root note — that is what makes a lick sound resolved.`;
 
   document.querySelectorAll("#scaleTypeRow .chip").forEach((c) =>
     c.classList.toggle("active", c.dataset.scale === scaleState.type));
@@ -859,6 +988,19 @@ function buildScalePickers() {
     b.textContent = name;
     b.addEventListener("click", () => { scaleState.rootPc = pc; renderScale(); });
     rootRow.appendChild(b);
+  });
+
+  document.getElementById("stepPrev").addEventListener("click", () => {
+    stopPlay(); stepTo(scaleState.step - 1);
+  });
+  document.getElementById("stepNext").addEventListener("click", () => {
+    stopPlay(); stepTo(scaleState.step + 1);
+  });
+  document.getElementById("stepPlay").addEventListener("click", togglePlay);
+  document.getElementById("stepDir").addEventListener("click", (e) => {
+    scaleState.bothWays = !scaleState.bothWays;
+    e.target.textContent = scaleState.bothWays ? "Up and down" : "Up only";
+    renderScale();
   });
 }
 buildScalePickers();

@@ -98,13 +98,29 @@
             <span class="micro">Root</span>
           </div>
         </div>
-        <div class="fretboard" id="fretboard"></div>
-        <div class="scale-legend">
-          <div class="legend-item"><span class="legend-dot root"></span> Root note</div>
-          <div class="legend-item"><span class="legend-dot tone"></span> Scale note</div>
-          <div class="legend-item"><span class="legend-dot band"></span> Suggested starting position</div>
+        <div class="scale-box" id="scaleBox"></div>
+
+        <div class="step-readout" id="stepReadout"></div>
+
+        <div class="step-controls">
+          <button class="chip" id="stepPrev">Back</button>
+          <button class="chip" id="stepPlay">Play</button>
+          <button class="chip" id="stepNext">Next</button>
+          <span class="micro" id="stepDirLbl">Order</span>
+          <button class="chip" id="stepDir">Up only</button>
         </div>
+
         <p class="scale-tip" id="scaleTip"></p>
+
+        <details class="neck-details">
+          <summary>Show the whole neck</summary>
+          <div class="fretboard" id="fretboard"></div>
+          <div class="scale-legend">
+            <div class="legend-item"><span class="legend-dot root"></span> Root note</div>
+            <div class="legend-item"><span class="legend-dot tone"></span> Scale note</div>
+            <div class="legend-item"><span class="legend-dot band"></span> The box you just learned</div>
+          </div>
+        </details>
       </section>
     </div>
 
