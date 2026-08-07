@@ -12,8 +12,11 @@ in the browser with the Web Audio API. No backend, no downloads.
   Reverb, Level.
 - **Learn**
   - **Tuner** — pluck a string, get the note + how sharp/flat you are.
-  - **Chord Trainer** — shows a chord, listens to you play it, and
-    auto-advances when it hears it (D → G → C → Em).
+  - **Chords** — shows a chord, listens to you play it, and auto-advances
+    when it hears it (D → G → C → Em).
+  - **Scales** — fretboard maps for minor pentatonic, blues, and major
+    pentatonic in any key, with root notes marked and the classic first
+    box highlighted.
 
 ## Running locally
 Because browsers only grant mic access over HTTPS or `localhost`, serve it —

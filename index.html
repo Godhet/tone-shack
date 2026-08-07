@@ -3,74 +3,68 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tone Shack — Guitar Amp</title>
+  <title>Tone Shack</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="app">
     <header class="topbar">
-      <h1>TONE&nbsp;SHACK</h1>
+      <h1>Tone Shack</h1>
       <div class="power">
-        <button id="powerBtn" class="power-btn">POWER ON</button>
         <span id="status" class="status">standby</span>
+        <button id="powerBtn" class="power-btn">Power on</button>
       </div>
     </header>
 
-    <!-- Setup row: pick your input (the Arturia) -->
     <section class="setup" id="setupRow">
-      <label for="deviceSelect">Input device</label>
+      <label for="deviceSelect">Input</label>
       <select id="deviceSelect" disabled>
-        <option>— power on to detect inputs —</option>
+        <option>Power on to detect inputs</option>
       </select>
-      <div class="meter" title="Input level — pluck a string, you should see this move">
+      <div class="meter" title="Input level — pluck a string, this should move">
         <div id="meterFill" class="meter-fill"></div>
       </div>
     </section>
 
-    <!-- View tabs -->
     <nav class="tabs" id="tabs">
-      <button class="tab active" data-view="amp">AMP</button>
-      <button class="tab" data-view="learn">LEARN</button>
+      <button class="tab active" data-view="amp">Amp</button>
+      <button class="tab" data-view="learn">Learn</button>
     </nav>
 
-    <!-- ============ AMP VIEW ============ -->
+    <!-- ============ AMP ============ -->
     <div id="view-amp">
-    <!-- Preset picker -->
-    <section class="presets" id="presetRow">
-      <button class="preset" data-preset="oasis-acoustic">
-        <span class="p-name">Oasis</span>
-        <span class="p-sub">Acoustic · Wonderwall</span>
-      </button>
-      <button class="preset" data-preset="oasis-electric">
-        <span class="p-name">Oasis</span>
-        <span class="p-sub">Electric · Slide Away</span>
-      </button>
-      <button class="preset" data-preset="acdc">
-        <span class="p-name">AC/DC</span>
-        <span class="p-sub">Crunch · Back in Black</span>
-      </button>
-    </section>
+      <section class="presets" id="presetRow">
+        <button class="preset" data-preset="oasis-acoustic">
+          <span class="p-name">Oasis</span>
+          <span class="p-sub">acoustic · wonderwall</span>
+        </button>
+        <button class="preset" data-preset="oasis-electric">
+          <span class="p-name">Oasis</span>
+          <span class="p-sub">electric · slide away</span>
+        </button>
+        <button class="preset" data-preset="acdc">
+          <span class="p-name">AC/DC</span>
+          <span class="p-sub">crunch · back in black</span>
+        </button>
+      </section>
 
-    <!-- The amp head with knobs -->
-    <section class="amp" id="amp">
-      <div class="amp-brand">
-        <span id="ampTitle">— pick a preset —</span>
-        <span id="ampNote" class="amp-note"></span>
-      </div>
-      <div class="knobs" id="knobs">
-        <!-- knobs injected by JS -->
-      </div>
-    </section>
-    </div><!-- /view-amp -->
+      <section class="amp" id="amp">
+        <div class="amp-brand">
+          <span id="ampTitle">Pick a preset</span>
+          <span id="ampNote" class="amp-note"></span>
+        </div>
+        <div class="controls" id="knobs"></div>
+      </section>
+    </div>
 
-    <!-- ============ LEARN VIEW ============ -->
+    <!-- ============ LEARN ============ -->
     <div id="view-learn" hidden>
       <nav class="tabs sub">
-        <button class="tab active" data-learn="tuner">TUNER</button>
-        <button class="tab" data-learn="chord">CHORD TRAINER</button>
+        <button class="tab active" data-learn="tuner">Tuner</button>
+        <button class="tab" data-learn="chord">Chords</button>
+        <button class="tab" data-learn="scales">Scales</button>
       </nav>
 
-      <!-- Tuner -->
       <section class="learn-panel" id="tunerPanel">
         <div class="tuner-note" id="tunerNote">—</div>
         <div class="tuner-bar">
@@ -84,22 +78,39 @@
         </div>
       </section>
 
-      <!-- Chord trainer -->
       <section class="learn-panel" id="chordPanel" hidden>
         <div class="chord-target">
-          <span class="chord-label">Play:</span>
+          <span>Play</span>
           <span class="chord-name" id="chordName">D</span>
         </div>
         <div class="chord-diagram" id="chordDiagram"></div>
-        <div class="chord-status" id="chordStatus">strum it…</div>
+        <div class="chord-status" id="chordStatus">strum it</div>
         <div class="chord-hearing" id="chordHearing"></div>
         <div class="chord-progress" id="chordProgress"></div>
       </section>
-    </div><!-- /view-learn -->
+
+      <section class="learn-panel scale-panel" id="scalesPanel" hidden>
+        <div class="scale-pickers">
+          <div class="picker-row" id="scaleTypeRow">
+            <span class="micro">Scale</span>
+          </div>
+          <div class="picker-row" id="scaleRootRow">
+            <span class="micro">Root</span>
+          </div>
+        </div>
+        <div class="fretboard" id="fretboard"></div>
+        <div class="scale-legend">
+          <div class="legend-item"><span class="legend-dot root"></span> Root note</div>
+          <div class="legend-item"><span class="legend-dot tone"></span> Scale note</div>
+          <div class="legend-item"><span class="legend-dot band"></span> Suggested starting position</div>
+        </div>
+        <p class="scale-tip" id="scaleTip"></p>
+      </section>
+    </div>
 
     <p class="hint">
-      Beginner tip: pluck a string and watch the meter above. No movement = wrong input
-      device or your Arturia's gain knob is down. Presets do the rest.
+      Pluck a string and watch the level meter. No movement means the wrong input
+      device is selected, or the gain on your interface is turned down.
     </p>
   </div>
 

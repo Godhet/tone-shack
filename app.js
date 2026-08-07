@@ -206,18 +206,19 @@ function applyPreset(id) {
   state.presetId = id;
   const n = state.nodes;
 
-  // cab
-  n.cabHP.frequency.value = p.cab.hp;
-  n.cabLP.frequency.value = p.cab.lp;
-  n.cabBody.frequency.value = p.cab.bodyFreq;
-  n.cabBody.gain.value = p.cab.bodyGain;
-  n.cabPres.frequency.value = p.cab.presFreq;
-  n.cabPres.gain.value = p.cab.presGain;
+  // audio nodes only exist once powered on; the UI can render before that
+  if (state.ctx) {
+    n.cabHP.frequency.value = p.cab.hp;
+    n.cabLP.frequency.value = p.cab.lp;
+    n.cabBody.frequency.value = p.cab.bodyFreq;
+    n.cabBody.gain.value = p.cab.bodyGain;
+    n.cabPres.frequency.value = p.cab.presFreq;
+    n.cabPres.gain.value = p.cab.presGain;
 
-  // chorus
-  n.chLFO.frequency.value = p.chorus.rate;
-  n.chDepth.gain.value = p.chorus.depth;
-  n.chWet.gain.value = p.chorus.wet;
+    n.chLFO.frequency.value = p.chorus.rate;
+    n.chDepth.gain.value = p.chorus.depth;
+    n.chWet.gain.value = p.chorus.wet;
+  }
 
   // knobs -> live values
   state.values = { ...p.knobs };
@@ -233,6 +234,7 @@ function applyPreset(id) {
 
 function applyKnob(key, value) {
   state.values[key] = value;
+  if (!state.ctx) return;            // UI-only until powered on
   const n = state.nodes;
   const p = PRESETS[state.presetId];
   switch (key) {
@@ -247,56 +249,71 @@ function applyKnob(key, value) {
   }
 }
 
-// ------------------------------------------------------------------ UI: knobs
+// ------------------------------------------------------------------ UI: controls
+// Horizontal sliders: click or drag anywhere on the track to set a value.
+const drag = { key: null, spec: null, el: null };
+
 function renderKnobs() {
   const wrap = document.getElementById("knobs");
   wrap.innerHTML = "";
-  for (const [key, label, min, max, step, unit] of KNOBS) {
-    const val = state.values[key];
+  for (const spec of KNOBS) {
+    const [key, label] = spec;
     const el = document.createElement("div");
-    el.className = "knob";
+    el.className = "ctrl";
     el.innerHTML = `
-      <div class="dial" data-key="${key}" tabindex="0"></div>
-      <label>${label}</label>
-      <span class="val" id="val-${key}"></span>
+      <div class="ctrl-head">
+        <span class="name">${label}</span>
+        <span class="val" id="val-${key}"></span>
+      </div>
+      <div class="ctrl-hit">
+        <div class="ctrl-track">
+          <div class="ctrl-fill"></div>
+          <div class="ctrl-thumb"></div>
+        </div>
+      </div>
     `;
     wrap.appendChild(el);
-    const dial = el.querySelector(".dial");
-    setDial(dial, key, val, min, max, unit);
+    setControl(el, spec, state.values[key]);
 
-    // drag up/down to turn
-    let dragging = false, lastY = 0;
-    const start = (y) => { dragging = true; lastY = y; };
-    const move = (y) => {
-      if (!dragging) return;
-      const dy = lastY - y;
-      lastY = y;
-      let v = state.values[key] + (dy / 150) * (max - min);
-      v = Math.min(max, Math.max(min, v));
-      applyKnob(key, v);
-      setDial(dial, key, v, min, max, unit);
-    };
-    dial.addEventListener("mousedown", (e) => { start(e.clientY); e.preventDefault(); });
-    window.addEventListener("mousemove", (e) => move(e.clientY));
-    window.addEventListener("mouseup", () => (dragging = false));
-    dial.addEventListener("wheel", (e) => {
+    const hit = el.querySelector(".ctrl-hit");
+    hit.addEventListener("mousedown", (e) => {
+      drag.key = key; drag.spec = spec; drag.el = el;
+      setFromPointer(e.clientX);
       e.preventDefault();
-      let v = state.values[key] - Math.sign(e.deltaY) * step * 4;
-      v = Math.min(max, Math.max(min, v));
+    });
+    hit.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const [, , min, max, step] = spec;
+      const v = clamp(state.values[key] - Math.sign(e.deltaY) * step * 4, min, max);
       applyKnob(key, v);
-      setDial(dial, key, v, min, max, unit);
+      setControl(el, spec, v);
     }, { passive: false });
   }
 }
 
-function setDial(dial, key, val, min, max, unit) {
-  const frac = (val - min) / (max - min);
-  const rot = -135 + frac * 270;           // -135deg .. +135deg sweep
-  dial.style.setProperty("--rot", rot + "deg");
-  const label = unit === "dB"
-    ? (val > 0 ? "+" : "") + val.toFixed(1) + " dB"
-    : Math.round(val * 100) + "";
-  document.getElementById("val-" + key).textContent = label;
+function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+
+function setFromPointer(clientX) {
+  if (!drag.key) return;
+  const [key, , min, max] = drag.spec;
+  const track = drag.el.querySelector(".ctrl-track").getBoundingClientRect();
+  const frac = clamp((clientX - track.left) / track.width, 0, 1);
+  const v = min + frac * (max - min);
+  applyKnob(key, v);
+  setControl(drag.el, drag.spec, v);
+}
+
+window.addEventListener("mousemove", (e) => { if (drag.key) setFromPointer(e.clientX); });
+window.addEventListener("mouseup", () => { drag.key = null; drag.spec = null; drag.el = null; });
+
+function setControl(el, spec, val) {
+  const [key, , min, max, , unit] = spec;
+  const pct = ((val - min) / (max - min)) * 100;
+  el.querySelector(".ctrl-fill").style.width = pct + "%";
+  el.querySelector(".ctrl-thumb").style.left = pct + "%";
+  el.querySelector("#val-" + key).textContent = unit === "dB"
+    ? (val > 0 ? "+" : "") + val.toFixed(1)
+    : String(Math.round(val * 100));
 }
 
 // ------------------------------------------------------------------ devices
@@ -403,7 +420,7 @@ document.getElementById("deviceSelect").addEventListener("change", async (e) => 
 
 document.querySelectorAll(".preset").forEach((btn) => {
   btn.addEventListener("click", () => {
-    if (!state.ctx) { alert("Hit POWER ON first 🙂"); return; }
+    if (!state.ctx) { applyPreset(btn.dataset.preset); return; }   // preview settings
     applyPreset(btn.dataset.preset);
   });
 });
@@ -643,7 +660,8 @@ function updateChord() {
 function learnTick() {
   if (!state.ctx || state.view !== "learn") return;
   if (learn.mode === "tuner") updateTuner();
-  else updateChord();
+  else if (learn.mode === "chord") updateChord();
+  else return;                       // scales is a static reference, no listening
   state.learnRAF = requestAnimationFrame(learnTick);
 }
 function startLearn() {
@@ -665,7 +683,9 @@ document.querySelectorAll("#tabs > .tab").forEach((tab) => {
     document.getElementById("view-amp").hidden = state.view !== "amp";
     document.getElementById("view-learn").hidden = state.view !== "learn";
     if (state.view === "learn") {
-      if (!state.ctx) { document.getElementById("chordStatus").textContent = "hit POWER ON first"; }
+      if (!state.ctx) {
+        document.getElementById("chordStatus").textContent = "power on to start listening";
+      }
       setChordTarget();
       startLearn();
     } else stopLearn();
@@ -678,9 +698,172 @@ document.querySelectorAll("[data-learn]").forEach((tab) => {
       t.classList.toggle("active", t === tab));
     document.getElementById("tunerPanel").hidden = learn.mode !== "tuner";
     document.getElementById("chordPanel").hidden = learn.mode !== "chord";
+    document.getElementById("scalesPanel").hidden = learn.mode !== "scales";
     learn.hold = 0; learn.cooling = false;
+    if (learn.mode === "scales") { stopLearn(); renderScale(); }
+    else startLearn();
   });
 });
+
+// ==================================================================
+//  SCALES  —  fretboard reference
+// ==================================================================
+const SCALES = {
+  "min-pent": {
+    name: "Minor pentatonic",
+    intervals: [0, 3, 5, 7, 10],
+    degrees: ["1", "b3", "4", "5", "b7"],
+    tip: "The backbone of rock and blues lead playing. Almost every solo you know lives here. Five notes, no wrong-sounding ones.",
+  },
+  "blues": {
+    name: "Blues",
+    intervals: [0, 3, 5, 6, 7, 10],
+    degrees: ["1", "b3", "4", "b5", "5", "b7"],
+    tip: "Minor pentatonic plus the b5 'blue note'. Pass through that note rather than landing on it and you get instant Zeppelin and Sabbath flavour.",
+  },
+  "maj-pent": {
+    name: "Major pentatonic",
+    intervals: [0, 2, 4, 7, 9],
+    degrees: ["1", "2", "3", "5", "6"],
+    tip: "Brighter and happier than minor pentatonic. Same shapes, different root. Think classic rock and country licks.",
+  },
+};
+
+const ROOTS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+// MIDI note of each open string, displayed high e first (top of the diagram)
+const STRING_MIDI = [64, 59, 55, 50, 45, 40];
+const STRING_LBL = ["e", "B", "G", "D", "A", "E"];
+const FRET_COUNT = 15;
+
+const scaleState = { type: "min-pent", rootPc: 9 };   // A minor pentatonic
+
+function buildFretboard(rootPc, intervals, degrees, boxRootPc) {
+  const padL = 46, padR = 14, padT = 22, fw = 40, sh = 26;
+  const boardW = FRET_COUNT * fw;
+  const W = padL + boardW + padR;
+  const H = padT + 5 * sh + 44;
+  const x = (fret) => padL + fret * fw;          // right edge of a fret
+  const dotX = (fret) => padL + (fret - 0.5) * fw;
+  const y = (s) => padT + s * sh;
+
+  // the classic first box: four frets starting where the box root sits
+  // lowest on the 6th string
+  let startFret = 0;
+  for (let f = 0; f <= 12; f++) {
+    if ((STRING_MIDI[5] + f) % 12 === boxRootPc) { startFret = f; break; }
+  }
+  const bandFrom = startFret;
+  const bandTo = Math.min(FRET_COUNT, startFret + 3);
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+
+  // suggested starting position band
+  svg += `<rect class="fb-band" x="${x(bandFrom - 1)}" y="${y(0) - 10}" width="${
+    (bandTo - bandFrom + 1) * fw}" height="${5 * sh + 20}" rx="2"/>`;
+
+  // inlays
+  for (const f of [3, 5, 7, 9, 12, 15]) {
+    if (f > FRET_COUNT) continue;
+    if (f === 12) {
+      svg += `<circle class="fb-inlay" cx="${dotX(f)}" cy="${y(1)}" r="3.5"/>`;
+      svg += `<circle class="fb-inlay" cx="${dotX(f)}" cy="${y(3)}" r="3.5"/>`;
+    } else {
+      svg += `<circle class="fb-inlay" cx="${dotX(f)}" cy="${y(2.5)}" r="3.5"/>`;
+    }
+  }
+
+  // frets + strings
+  for (let f = 0; f <= FRET_COUNT; f++) {
+    svg += `<line class="${f === 0 ? "fb-nut" : "fb-fret"}" x1="${x(f)}" y1="${
+      y(0)}" x2="${x(f)}" y2="${y(5)}"/>`;
+  }
+  for (let s = 0; s < 6; s++) {
+    svg += `<line class="fb-string" x1="${x(0)}" y1="${y(s)}" x2="${x(FRET_COUNT)}" y2="${y(s)}"/>`;
+    svg += `<text class="fb-open" x="${padL - 30}" y="${y(s) + 3.5}">${STRING_LBL[s]}</text>`;
+  }
+
+  // fret numbers
+  for (let f = 1; f <= FRET_COUNT; f++) {
+    svg += `<text class="fb-num" x="${dotX(f)}" y="${y(5) + 22}" text-anchor="middle">${f}</text>`;
+  }
+
+  // scale tones
+  for (let s = 0; s < 6; s++) {
+    for (let f = 0; f <= FRET_COUNT; f++) {
+      const pc = (STRING_MIDI[s] + f) % 12;
+      const idx = intervals.indexOf((pc - rootPc + 12) % 12);
+      if (idx === -1) continue;
+      const isRoot = idx === 0;
+      const cx = f === 0 ? padL - 12 : dotX(f);
+      const cy = y(s);
+      if (f === 0 && isRoot) {
+        svg += `<circle class="fb-root" cx="${cx}" cy="${cy}" r="9"/>`;
+        svg += `<text class="fb-root-lbl" x="${cx}" y="${cy + 3}" text-anchor="middle">${ROOTS[pc]}</text>`;
+      } else if (f === 0) {
+        svg += `<circle class="fb-tone" cx="${cx}" cy="${cy}" r="8"/>`;
+      } else if (isRoot) {
+        svg += `<circle class="fb-root" cx="${cx}" cy="${cy}" r="10"/>`;
+        svg += `<text class="fb-root-lbl" x="${cx}" y="${cy + 3}" text-anchor="middle">${ROOTS[pc]}</text>`;
+      } else {
+        svg += `<circle class="fb-tone" cx="${cx}" cy="${cy}" r="9"/>`;
+        svg += `<text class="fb-tone-lbl" x="${cx}" y="${cy + 3}" text-anchor="middle">${degrees[idx]}</text>`;
+      }
+    }
+  }
+
+  svg += `</svg>`;
+  return { svg, startFret, bandFrom, bandTo };
+}
+
+function renderScale() {
+  const sc = SCALES[scaleState.type];
+  const rootName = ROOTS[scaleState.rootPc];
+  // major pentatonic shares its shapes with the minor pentatonic a minor
+  // third below, so its classic first box sits at that relative-minor root
+  const boxRootPc = scaleState.type === "maj-pent"
+    ? (scaleState.rootPc + 9) % 12
+    : scaleState.rootPc;
+  const { svg, bandFrom, bandTo } = buildFretboard(
+    scaleState.rootPc, sc.intervals, sc.degrees, boxRootPc);
+  document.getElementById("fretboard").innerHTML = svg;
+
+  const where = bandFrom === 0
+    ? "open position, using the open strings plus the first three frets"
+    : `frets ${bandFrom} to ${bandTo}, index finger at fret ${bandFrom}`;
+  document.getElementById("scaleTip").innerHTML =
+    `<strong>${rootName} ${sc.name.toLowerCase()}.</strong> ${sc.tip} ` +
+    `Start in the shaded box: ${where}. Play it up and down until the shape is in your hands, ` +
+    `then try landing on an orange root note at the end of a phrase — that is what makes a lick sound finished.`;
+
+  document.querySelectorAll("#scaleTypeRow .chip").forEach((c) =>
+    c.classList.toggle("active", c.dataset.scale === scaleState.type));
+  document.querySelectorAll("#scaleRootRow .chip").forEach((c) =>
+    c.classList.toggle("active", Number(c.dataset.root) === scaleState.rootPc));
+}
+
+function buildScalePickers() {
+  const typeRow = document.getElementById("scaleTypeRow");
+  for (const [id, sc] of Object.entries(SCALES)) {
+    const b = document.createElement("button");
+    b.className = "chip wide";
+    b.dataset.scale = id;
+    b.textContent = sc.name;
+    b.addEventListener("click", () => { scaleState.type = id; renderScale(); });
+    typeRow.appendChild(b);
+  }
+  const rootRow = document.getElementById("scaleRootRow");
+  ROOTS.forEach((name, pc) => {
+    const b = document.createElement("button");
+    b.className = "chip";
+    b.dataset.root = pc;
+    b.textContent = name;
+    b.addEventListener("click", () => { scaleState.rootPc = pc; renderScale(); });
+    rootRow.appendChild(b);
+  });
+}
+buildScalePickers();
+renderScale();
+applyPreset("oasis-electric");     // show the amp face before power on
 
 // start/stop learn loop alongside power
 const _powerOn = powerOn;
