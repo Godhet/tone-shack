@@ -70,6 +70,7 @@
       <nav class="tabs sub">
         <button class="tab active" data-learn="tuner">Tuner</button>
         <button class="tab" data-learn="chord">Chords</button>
+        <button class="tab" data-learn="drill">Changes</button>
         <button class="tab" data-learn="scales">Scales</button>
       </nav>
 
@@ -95,6 +96,36 @@
         <div class="chord-status" id="chordStatus">strum it</div>
         <div class="chord-hearing" id="chordHearing"></div>
         <div class="chord-progress" id="chordProgress"></div>
+      </section>
+
+      <section class="learn-panel drill-panel" id="drillPanel" hidden>
+        <div class="picker-row" id="drillChordRow">
+          <span class="micro">Chords</span>
+        </div>
+
+        <div class="drill-stage">
+          <div class="drill-slot now">
+            <span class="micro">Now</span>
+            <div class="drill-chord" id="drillNow">—</div>
+            <div class="drill-diagram" id="drillNowDiagram"></div>
+          </div>
+          <div class="drill-slot next">
+            <span class="micro">Next</span>
+            <div class="drill-chord" id="drillNext">—</div>
+            <div class="drill-diagram" id="drillNextDiagram"></div>
+          </div>
+        </div>
+
+        <div class="beat-dots" id="beatDots"></div>
+        <div class="drill-status" id="drillStatus">pick two chords and press start</div>
+
+        <div class="drill-controls">
+          <button class="chip" id="drillStart">Start</button>
+          <div id="drillTempo" class="drill-tempo"></div>
+          <button class="chip" id="drillRamp">Auto speed up</button>
+        </div>
+
+        <div class="drill-score" id="drillScore"></div>
       </section>
 
       <section class="learn-panel scale-panel" id="scalesPanel" hidden>

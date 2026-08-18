@@ -498,19 +498,40 @@ document.querySelectorAll(".preset").forEach((btn) => {
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 
 // chord tones as pitch classes (C=0)
-const CHORD_TONES = { D:[2,6,9], G:[7,11,2], C:[0,4,7], Em:[4,7,11] };
+const CHORD_TONES = {
+  D: [2,6,9],   G: [7,11,2],  C: [0,4,7],   Em: [4,7,11],
+  Am: [9,0,4],  E: [4,8,11],  A: [9,1,4],   Dm: [2,5,9],
+  // the Wonderwall family — all keep fingers 3 and 4 parked on B/e fret 3
+  Cadd9: [0,4,7,2], Em7: [4,7,11,2], Dsus4: [2,7,9], A7sus4: [9,2,4,7],
+};
 // fingering low->high [E A D G B e]; -1 = muted, 0 = open
 const CHORD_FRETS = {
-  D:  [-1,-1, 0, 2, 3, 2],
-  G:  [ 3, 2, 0, 0, 0, 3],
-  C:  [-1, 3, 2, 0, 1, 0],
-  Em: [ 0, 2, 2, 0, 0, 0],
+  D:     [-1,-1, 0, 2, 3, 2],
+  G:     [ 3, 2, 0, 0, 3, 3],
+  C:     [-1, 3, 2, 0, 1, 0],
+  Em:    [ 0, 2, 2, 0, 0, 0],
+  Am:    [-1, 0, 2, 2, 1, 0],
+  E:     [ 0, 2, 2, 1, 0, 0],
+  A:     [-1, 0, 2, 2, 2, 0],
+  Dm:    [-1,-1, 0, 2, 3, 1],
+  Cadd9: [-1, 3, 2, 0, 3, 3],
+  Em7:   [ 0, 2, 2, 0, 3, 3],
+  Dsus4: [-1,-1, 0, 2, 3, 3],
+  A7sus4:[-1, 0, 2, 0, 3, 3],
 };
 const CHORD_FINGERS = {
-  D:  [0,0,0,1,3,2],
-  G:  [2,1,0,0,0,3],
-  C:  [0,3,2,0,1,0],
-  Em: [0,2,3,0,0,0],
+  D:     [0,0,0,1,3,2],
+  G:     [2,1,0,0,3,4],
+  C:     [0,3,2,0,1,0],
+  Em:    [0,2,3,0,0,0],
+  Am:    [0,0,2,3,1,0],
+  E:     [0,2,3,1,0,0],
+  A:     [0,0,1,2,3,0],
+  Dm:    [0,0,0,2,3,1],
+  Cadd9: [0,2,1,0,3,4],
+  Em7:   [0,1,2,0,3,4],
+  Dsus4: [0,0,0,1,2,3],
+  A7sus4:[0,0,1,0,3,4],
 };
 const CHORD_SEQUENCE = ["D", "G", "C", "Em"];
 
@@ -728,6 +749,7 @@ function learnTick() {
   if (!state.ctx || state.view !== "learn") return;
   if (learn.mode === "tuner") updateTuner();
   else if (learn.mode === "chord") updateChord();
+  else if (learn.mode === "drill") updateDrill();
   else return;                       // scales is a static reference, no listening
   state.learnRAF = requestAnimationFrame(learnTick);
 }
@@ -755,7 +777,7 @@ document.querySelectorAll("#tabs > .tab").forEach((tab) => {
       }
       setChordTarget();
       startLearn();
-    } else { stopLearn(); stopPlay(); }
+    } else { stopLearn(); stopPlay(); stopDrill(); }
   });
 });
 document.querySelectorAll("[data-learn]").forEach((tab) => {
@@ -765,12 +787,264 @@ document.querySelectorAll("[data-learn]").forEach((tab) => {
       t.classList.toggle("active", t === tab));
     document.getElementById("tunerPanel").hidden = learn.mode !== "tuner";
     document.getElementById("chordPanel").hidden = learn.mode !== "chord";
+    document.getElementById("drillPanel").hidden = learn.mode !== "drill";
     document.getElementById("scalesPanel").hidden = learn.mode !== "scales";
     learn.hold = 0; learn.cooling = false;
+    if (learn.mode !== "drill") stopDrill();
     if (learn.mode === "scales") { stopLearn(); renderScale(); }
     else { stopPlay(); startLearn(); }
   });
 });
+
+// ==================================================================
+//  CHANGES  —  chord change drill with a metronome
+// ==================================================================
+// Forming a chord and switching to it in time are different skills.
+// This drills the second one: a click track, a chord per bar, and a
+// score for whether you actually landed it.
+const DRILL_CHORDS = ["Em7", "G", "Cadd9", "Dsus4", "A7sus4",
+                      "Em", "D", "C", "Am", "A", "E", "Dm"];
+const DRILL_THRESHOLD = 0.66;   // looser than the static trainer — you are under time pressure
+const DRILL_CONFIRM = 3;        // frames above threshold before it counts
+
+const drill = {
+  chords: ["G", "Cadd9"],
+  bpm: 60,
+  beatsPerBar: 4,
+  running: false,
+  autoRamp: true,
+  nextTime: 0,
+  beat: 0,
+  bar: 0,
+  queue: [],
+  uiBar: -1,
+  uiBeat: -1,
+  hit: false,
+  confirm: 0,
+  bars: 0, hits: 0, streak: 0, best: 0,
+  schedTimer: null,
+  tempoSlider: null,
+};
+
+function targetForBar(bar) {
+  if (bar <= 0 || !drill.chords.length) return null;
+  return drill.chords[(bar - 1) % drill.chords.length];
+}
+
+function scheduleClick(time, isDownbeat) {
+  const ctx = state.ctx;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.frequency.value = isDownbeat ? 1500 : 950;
+  g.gain.setValueAtTime(0.0001, time);
+  g.gain.exponentialRampToValueAtTime(isDownbeat ? 0.34 : 0.18, time + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+  osc.connect(g).connect(ctx.destination);   // straight out, never through the amp
+  osc.start(time);
+  osc.stop(time + 0.07);
+}
+
+// Schedule slightly ahead of time so the click stays steady even if the
+// main thread stutters. Visuals are driven off the same queue.
+function drillSchedule() {
+  if (!state.ctx) return;
+  const horizon = state.ctx.currentTime + 0.12;
+  while (drill.nextTime < horizon) {
+    const beatInBar = drill.beat % drill.beatsPerBar;
+    scheduleClick(drill.nextTime, beatInBar === 0);
+    drill.queue.push({ time: drill.nextTime, beatInBar, bar: drill.bar });
+    drill.beat++;
+    drill.nextTime += 60 / drill.bpm;
+    if (drill.beat % drill.beatsPerBar === 0) drill.bar++;
+  }
+}
+
+function scoreBar() {
+  if (targetForBar(drill.uiBar) === null) return;   // count-in bar
+  drill.bars++;
+  if (drill.hit) {
+    drill.hits++;
+    drill.streak++;
+    if (drill.streak > drill.best) drill.best = drill.streak;
+    if (drill.autoRamp && drill.streak > 0 && drill.streak % 4 === 0) {
+      drill.tempoSlider.set(Math.min(180, drill.bpm + 4));
+    }
+  } else {
+    drill.streak = 0;
+  }
+}
+
+function renderDrillScore() {
+  const pct = drill.bars ? Math.round((drill.hits / drill.bars) * 100) : 0;
+  document.getElementById("drillScore").innerHTML =
+    `bars <b>${drill.hits}/${drill.bars}</b> (${pct}%) · ` +
+    `streak <b>${drill.streak}</b> · best <b>${drill.best}</b>`;
+}
+
+function renderDrillChords() {
+  // before starting, preview the first two so you can get your hand ready
+  const now = drill.running
+    ? targetForBar(drill.uiBar)
+    : (drill.chords[0] || null);
+  const next = drill.running
+    ? targetForBar(drill.uiBar + 1)
+    : (drill.chords[1] || null);
+  document.getElementById("drillNow").textContent = now || "get ready";
+  document.getElementById("drillNext").textContent = next || "—";
+  document.getElementById("drillNowDiagram").innerHTML = now ? renderChord(now) : "";
+  document.getElementById("drillNextDiagram").innerHTML = next ? renderChord(next) : "";
+}
+
+function renderBeatDots() {
+  const wrap = document.getElementById("beatDots");
+  if (wrap.children.length !== drill.beatsPerBar) {
+    wrap.innerHTML = Array.from({ length: drill.beatsPerBar },
+      () => `<span class="bd"></span>`).join("");
+  }
+  [...wrap.children].forEach((d, i) => {
+    d.classList.toggle("on", i === drill.uiBeat);
+    d.classList.toggle("down", i === 0);
+  });
+}
+
+function updateDrill() {
+  if (!drill.running) return;
+  const ctx = state.ctx;
+
+  // advance the UI to whatever has actually sounded by now
+  while (drill.queue.length && drill.queue[0].time <= ctx.currentTime) {
+    const ev = drill.queue.shift();
+    if (ev.bar !== drill.uiBar) {
+      scoreBar();
+      drill.uiBar = ev.bar;
+      drill.hit = false;
+      drill.confirm = 0;
+      renderDrillChords();
+      renderDrillScore();
+      document.querySelector(".drill-slot.now").classList.remove("hit");
+    }
+    drill.uiBeat = ev.beatInBar;
+  }
+  renderBeatDots();
+
+  // listen for the current bar's chord
+  const target = targetForBar(drill.uiBar);
+  const status = document.getElementById("drillStatus");
+  if (!target) {
+    status.textContent = "counting you in";
+    status.className = "drill-status";
+    return;
+  }
+  if (drill.hit) return;
+
+  const tb = new Float32Array(1024);
+  state.nodes.detect.getFloatTimeDomainData(tb);
+  let rms = 0;
+  for (let i = 0; i < tb.length; i++) rms += tb[i] * tb[i];
+  rms = Math.sqrt(rms / tb.length);
+
+  if (rms < 0.01) {
+    status.textContent = "play " + target;
+    status.className = "drill-status";
+    drill.confirm = 0;
+    return;
+  }
+
+  const { chroma } = computeChroma();
+  const sim = chordSimilarity(chroma, CHORD_TONES[target]);
+  if (sim >= DRILL_THRESHOLD) drill.confirm++;
+  else drill.confirm = Math.max(0, drill.confirm - 1);
+
+  if (drill.confirm >= DRILL_CONFIRM) {
+    drill.hit = true;
+    status.textContent = "got it";
+    status.className = "drill-status hit";
+    document.querySelector(".drill-slot.now").classList.add("hit");
+  } else {
+    status.textContent = "play " + target;
+    status.className = "drill-status";
+  }
+}
+
+function startDrill() {
+  if (!state.ctx) {
+    document.getElementById("drillStatus").textContent = "power on first";
+    return;
+  }
+  if (drill.chords.length < 2) {
+    document.getElementById("drillStatus").textContent = "pick at least two chords";
+    return;
+  }
+  drill.running = true;
+  drill.beat = 0; drill.bar = 0; drill.uiBar = -1; drill.uiBeat = -1;
+  drill.queue.length = 0;
+  drill.hit = false; drill.confirm = 0;
+  drill.bars = 0; drill.hits = 0; drill.streak = 0; drill.best = 0;
+  drill.nextTime = state.ctx.currentTime + 0.15;
+  drill.schedTimer = setInterval(drillSchedule, 25);
+  drillSchedule();
+  const btn = document.getElementById("drillStart");
+  btn.textContent = "Stop";
+  btn.classList.add("running");
+  renderDrillScore();
+}
+
+function stopDrill() {
+  drill.running = false;
+  if (drill.schedTimer) clearInterval(drill.schedTimer);
+  drill.schedTimer = null;
+  drill.queue.length = 0;
+  const btn = document.getElementById("drillStart");
+  btn.textContent = "Start";
+  btn.classList.remove("running");
+  document.querySelector(".drill-slot.now").classList.remove("hit");
+  const status = document.getElementById("drillStatus");
+  status.className = "drill-status";
+  status.textContent = drill.bars
+    ? `stopped — ${drill.hits} of ${drill.bars} bars, best streak ${drill.best}`
+    : "pick two chords and press start";
+}
+
+function buildDrillUI() {
+  const row = document.getElementById("drillChordRow");
+  for (const name of DRILL_CHORDS) {
+    const b = document.createElement("button");
+    b.className = "chip";
+    b.dataset.chord = name;
+    b.textContent = name;
+    b.classList.toggle("active", drill.chords.includes(name));
+    b.addEventListener("click", () => {
+      const i = drill.chords.indexOf(name);
+      if (i >= 0) { if (drill.chords.length > 2) drill.chords.splice(i, 1); }
+      else if (drill.chords.length < 4) drill.chords.push(name);
+      row.querySelectorAll(".chip").forEach((c) =>
+        c.classList.toggle("active", drill.chords.includes(c.dataset.chord)));
+      if (drill.running) startDrill();     // restart cleanly with the new set
+      else renderDrillChords();
+    });
+    row.appendChild(b);
+  }
+
+  const tempoHost = document.getElementById("drillTempo");
+  drill.tempoSlider = mountSlider(tempoHost, {
+    label: "Tempo", min: 40, max: 180, step: 1, value: drill.bpm,
+    format: (v) => Math.round(v) + " bpm",
+    onInput: (v) => { drill.bpm = Math.round(v); },
+  });
+
+  document.getElementById("drillStart").addEventListener("click", () => {
+    if (drill.running) stopDrill(); else startDrill();
+  });
+  const rampBtn = document.getElementById("drillRamp");
+  rampBtn.classList.toggle("on", drill.autoRamp);
+  rampBtn.addEventListener("click", () => {
+    drill.autoRamp = !drill.autoRamp;
+    rampBtn.classList.toggle("on", drill.autoRamp);
+  });
+
+  renderBeatDots();
+  renderDrillChords();
+}
 
 // ==================================================================
 //  SCALES  —  fretboard reference
@@ -1075,6 +1349,7 @@ state.trim = savedTune.trim;
 state.gate = savedTune.gate;
 mountInputTuning();
 
+buildDrillUI();
 buildScalePickers();
 renderScale();
 applyPreset("oasis-electric");     // show the amp face before power on
@@ -1088,5 +1363,6 @@ powerOn = async function () {
 const _powerOff = powerOff;
 powerOff = function () {
   stopLearn();
+  stopDrill();
   _powerOff();
 };

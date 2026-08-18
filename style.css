@@ -350,6 +350,95 @@ body {
 .chord-diagram .mark { fill: var(--text-3); font-size: 13px; font-family: var(--mono); }
 .chord-diagram .fng { fill: #2B0A00; font-size: 11px; font-weight: 500; }
 
+/* ---------- chord change drill ---------- */
+.drill-panel { text-align: left; }
+.drill-panel .picker-row { margin-bottom: 20px; }
+
+.drill-stage {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.drill-slot {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px 16px 16px;
+  text-align: center;
+}
+.drill-slot.now { border-color: var(--border-strong); }
+.drill-slot.now.hit { border-color: var(--good); }
+.drill-slot .micro { display: block; margin-bottom: 6px; }
+.drill-chord {
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--accent);
+  line-height: 1.1;
+}
+.drill-slot.next .drill-chord { font-size: 24px; color: var(--text-2); }
+.drill-slot.now.hit .drill-chord { color: var(--good); }
+.drill-diagram { margin: 10px auto 0; width: 118px; }
+.drill-slot.next .drill-diagram { width: 92px; opacity: 0.65; }
+.drill-diagram svg { width: 100%; height: auto; }
+.drill-diagram .grid { stroke: var(--border-strong); stroke-width: 1.2; }
+.drill-diagram .nut { stroke: var(--text-2); stroke-width: 4; }
+.drill-diagram .dot { fill: var(--accent); }
+.drill-diagram .mark { fill: var(--text-3); font-size: 13px; font-family: var(--mono); }
+.drill-diagram .fng { fill: #2B0A00; font-size: 11px; font-weight: 500; }
+
+.beat-dots {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 20px 0 12px;
+}
+.beat-dots .bd {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--border);
+  transition: background 0.06s, transform 0.06s;
+}
+.beat-dots .bd.on { background: var(--text-2); transform: scale(1.25); }
+.beat-dots .bd.on.down { background: var(--accent); }
+
+.drill-status {
+  text-align: center;
+  font-size: 15px;
+  min-height: 22px;
+  color: var(--text-3);
+}
+.drill-status.hit { color: var(--good); }
+.drill-status.miss { color: var(--accent); }
+
+.drill-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 0;
+  flex-wrap: wrap;
+}
+.drill-tempo { flex: 1; min-width: 160px; }
+#drillStart { min-width: 66px; }
+#drillStart.running { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
+#drillRamp.on { border-color: var(--accent); color: var(--accent); background: var(--accent-wash); }
+
+.drill-score {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-3);
+  letter-spacing: 0.04em;
+  min-height: 18px;
+}
+.drill-score b { color: var(--text); font-weight: 500; }
+
+@media (max-width: 560px) {
+  .drill-stage { grid-template-columns: 1fr 1fr; }
+}
+
 /* ---------- scales ---------- */
 .scale-panel { text-align: left; }
 .scale-pickers { display: flex; flex-direction: column; gap: 14px; margin-bottom: 22px; }

@@ -14,6 +14,9 @@ in the browser with the Web Audio API. No backend, no downloads.
   - **Tuner** — pluck a string, get the note + how sharp/flat you are.
   - **Chords** — shows a chord, listens to you play it, and auto-advances
     when it hears it (D → G → C → Em).
+  - **Changes** — the chord-change drill. Pick two to four chords, set a
+    tempo, and a metronome moves you between them one bar at a time. It
+    listens for whether you landed each change and speeds up as you improve.
   - **Scales** — fretboard maps for minor pentatonic, blues, and major
     pentatonic in any key, with root notes marked and the classic first
     box highlighted.
